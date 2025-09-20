@@ -12,6 +12,18 @@ APP_TITLE = "Animal Alphabet Quiz"
 IMG_SIZE = (320, 240)
 
 
+def generate_quiz() -> dict:
+    """Compatibility helper for non-GUI callers.
+    Returns: {"question": str, "options": List[str], "answer": str}
+    """
+    correct, opts = get_random_question()
+    return {
+        "question": f"Identify the animal: {correct}",
+        "options": opts,
+        "answer": correct,
+    }
+
+
 class QuizApp(tk.Tk):
     def __init__(self):
         super().__init__()
