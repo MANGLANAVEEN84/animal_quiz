@@ -72,12 +72,10 @@ def get_fruit_name(letter):
         return FRUITS[idx]
     return ""
 
-# Show animal list and ABC quiz
-tab1, tab2, tab3 = st.tabs(["Quiz", "Animals", "ABC Sequence Quiz"])
+tab1, tab2, tab3, tab4 = st.tabs(["Quiz", "Animals", "ABC Sequence Quiz", "Number Quiz"])
 
 
 with tab3:
-
     st.header("ABC Sequence / Missing Letter Quiz")
     import random
     letters = [chr(ord('A') + i) for i in range(26)]
@@ -109,7 +107,7 @@ with tab3:
     submitted = st.session_state.abc_quiz_submitted
 
     if not submitted:
-        with st.form("abc_quiz_form"):
+        with st.form("abc_quiz_form_tab3"):
             for idx, current_q in enumerate(questions):
                 st.write(f"### Question {idx+1} of {max_questions}")
                 st.write("### ", "  ".join(current_q['display_seq']))
@@ -144,6 +142,132 @@ with tab3:
         if st.button("Restart Quiz", key="abc_seq_restart"):
             st.session_state.abc_quiz_questions = []
             st.session_state.abc_quiz_submitted = False
+
+with tab4:
+    st.header("Number Comparison Quiz")
+    import random
+    from PIL import Image, ImageDraw, ImageFont
+    import io
+    # Generate 5 unique random pairs for the session (isolate state for this tab)
+    # Handle restart flag
+    if st.session_state.get('numquiz_restart', False):
+        for k in ['numquiz_pairs', 'numquiz_answers', 'numquiz_submitted', 'numquiz_key_prefix']:
+            if k in st.session_state:
+                del st.session_state[k]
+        st.session_state.numquiz_restart = False
+    if 'numquiz_pairs' not in st.session_state:
+        pairs = set()
+        while len(pairs) < 5:
+            a, b = random.sample(range(1, 101), 2)
+            pair = tuple(sorted((a, b)))
+            pairs.add(pair)
+        quiz_pairs = []
+        for pair in list(pairs):
+            a, b = pair
+            if random.choice([True, False]):
+                quiz_pairs.append((a, b))
+            else:
+                quiz_pairs.append((b, a))
+        st.session_state.numquiz_pairs = quiz_pairs
+        st.session_state.numquiz_answers = [""] * 5
+        st.session_state.numquiz_submitted = False
+    quiz_pairs = st.session_state.numquiz_pairs
+    answers = st.session_state.numquiz_answers
+    # Always use session state for submission
+    submitted = st.session_state.get('numquiz_submitted', False)
+
+    def numquiz_draw_circle_number(num):
+        img = Image.new('RGBA', (120, 120), color='white')
+        draw = ImageDraw.Draw(img)
+        draw.ellipse((8, 8, 112, 112), outline='black', width=6)
+        try:
+            font = ImageFont.truetype("arialbd.ttf", 36)
+        except:
+            try:
+                font = ImageFont.truetype("DejaVuSans-Bold.ttf", 36)
+            except:
+                font = ImageFont.load_default()
+        bbox = font.getbbox(str(num)) if hasattr(font, 'getbbox') else draw.textbbox((0,0), str(num), font=font)
+        w, h = bbox[2] - bbox[0], bbox[3] - bbox[1]
+        draw.text(((120-w)/2, (120-h)/2), str(num), fill='blue', font=font)
+        return img
+
+    def numquiz_add_tick_to_image(img):
+        draw = ImageDraw.Draw(img)
+        tick = [(80, 90), (100, 110), (115, 70)]
+        draw.line(tick[:2], fill='green', width=6)
+        draw.line(tick[1:], fill='green', width=6)
+        return img
+
+    # Use a unique prefix for this session to avoid duplicate keys
+    import uuid
+    if 'numquiz_key_prefix' not in st.session_state:
+        st.session_state['numquiz_key_prefix'] = str(uuid.uuid4())[:8]
+    key_prefix = st.session_state['numquiz_key_prefix']
+
+    if not submitted:
+        for i, (a, b) in enumerate(quiz_pairs):
+            st.markdown(f"### Question {i+1}")
+            cols = st.columns(2)
+            btn_left = btn_right = False
+            with cols[0]:
+                img_a = numquiz_draw_circle_number(a)
+                if answers[i] == "Left":
+                    img_a = numquiz_add_tick_to_image(img_a)
+                buf_a = io.BytesIO()
+                img_a.save(buf_a, format='PNG')
+                st.image(buf_a.getvalue(), width='content')
+                btn_left = st.button(" ", key=f"numquiz_{key_prefix}_btn_left_{i}", help=f"Select {a}", disabled=answers[i]=="Left")
+            with cols[1]:
+                img_b = numquiz_draw_circle_number(b)
+                if answers[i] == "Right":
+                    img_b = numquiz_add_tick_to_image(img_b)
+                buf_b = io.BytesIO()
+                img_b.save(buf_b, format='PNG')
+                st.image(buf_b.getvalue(), width='content')
+                btn_right = st.button(" ", key=f"numquiz_{key_prefix}_btn_right_{i}", help=f"Select {b}", disabled=answers[i]=="Right")
+            # Make answer selection atomic: only one click needed
+            if btn_left and answers[i] != "Left":
+                answers[i] = "Left"
+                st.session_state.numquiz_answers = answers.copy()
+            if btn_right and answers[i] != "Right":
+                answers[i] = "Right"
+                st.session_state.numquiz_answers = answers.copy()
+            if answers[i] == "Left":
+                cols[0].success("Selected")
+            elif answers[i] == "Right":
+                cols[1].success("Selected")
+        # Always show submit button, enable only if all answered
+        all_answered = all(ans in ("Left", "Right") for ans in answers)
+        submit_pressed = st.button(
+            "Submit Quiz",
+            key="numquiz_submit_btn",
+            disabled=not all_answered,
+            help="Answer all questions to enable submission."
+        )
+        # Only process submission if all answered and button was pressed
+        if all_answered and submit_pressed:
+            st.session_state.numquiz_submitted = True
+    if st.session_state.get('numquiz_submitted', False):
+        # Calculate score
+        score = 0
+        for i, (a, b) in enumerate(quiz_pairs):
+            correct = "Left" if a > b else "Right"
+            if answers[i] == correct:
+                score += 1
+        st.success(f"You got {score} out of {len(quiz_pairs)} correct!")
+        # Show correct answers for each question
+        for i, (a, b) in enumerate(quiz_pairs):
+            correct = "Left" if a > b else "Right"
+            user = answers[i]
+            st.markdown(f"**Q{i+1}: {a} vs {b}**")
+            st.write(f"Your answer: {user} | Correct answer: {correct}")
+            if user == correct:
+                st.success("Correct!")
+            else:
+                st.error("Wrong!")
+        if st.button("Restart Number Quiz", key="numquiz_restart_btn"):
+            st.session_state.numquiz_restart = True
 
 with tab1:
     st.header("Take the Quiz!")
