@@ -9,12 +9,17 @@ from PIL import Image, ImageDraw, ImageFont
 
 from animals import normalize_name
 
-# Simple cache directory
-CACHE_DIR = os.path.join(os.path.dirname(__file__), "cache")
+# Directories
+BASE_DIR = os.path.dirname(__file__)
+ASSETS_DIR = os.path.join(BASE_DIR, "assets")
+CACHE_DIR = os.path.join(BASE_DIR, "cache")
 os.makedirs(CACHE_DIR, exist_ok=True)
 
 USER_AGENT = "AnimalQuiz/1.0 (Educational app; contact: example@example.com)"
 WIKI_SUMMARY_URL = "https://en.wikipedia.org/api/rest_v1/page/summary/{}"
+
+# Env toggle: when set to any non-empty value, skip network and use local assets/placeholders only
+USE_LOCAL_ONLY = bool(os.environ.get("QUIZ_USE_LOCAL_ONLY"))
 
 
 def _safe_filename(name: str) -> str:
@@ -31,6 +36,8 @@ def _download_image(url: str) -> Optional[Image.Image]:
 
 
 def _fetch_wikipedia_thumbnail(animal_name: str) -> Optional[Image.Image]:
+    if USE_LOCAL_ONLY:
+        return None
     # Use Wikipedia summary endpoint which often includes a thumbnail
     title = animal_name.replace(" ", "%20")
     try:
@@ -91,43 +98,6 @@ def _generate_placeholder(animal_name: str, size: tuple[int, int] = (320, 240)) 
     return img
 
 
-def get_animal_image(animal_name: str, size: tuple[int, int] = (320, 240)) -> Image.Image:
-    """
-    Returns a PIL.Image for the given animal name.
-    Order of attempts:
-    - If cached, load from disk.
-    - Try Wikipedia summary thumbnail.
-    - Fallback to generated placeholder.
-
-    Result is cached to disk as PNG.
-    """
-    fname = _safe_filename(animal_name)
-    fpath = os.path.join(CACHE_DIR, fname)
-
-    # Load from cache
-    if os.path.exists(fpath):
-        try:
-            img = Image.open(fpath).convert("RGB")
-            return img
-        except Exception:
-            pass
-
-    # Try fetch
-    img = _fetch_wikipedia_thumbnail(animal_name)
-    if img is None:
-        img = _generate_placeholder(animal_name, size)
-
-    # Resize to consistent size while keeping aspect ratio and padding
-    img = _fit_image(img, size)
-
-    # Save to cache
-    try:
-        img.save(fpath, format="PNG")
-    except Exception:
-        pass
-    return img
-
-
 def _fit_image(img: Image.Image, size: tuple[int, int]) -> Image.Image:
     target_w, target_h = size
     img = img.copy()
@@ -137,3 +107,63 @@ def _fit_image(img: Image.Image, size: tuple[int, int]) -> Image.Image:
     y = (target_h - img.height) // 2
     canvas.paste(img, (x, y))
     return canvas
+
+
+def _load_local_asset(animal_name: str) -> Optional[Image.Image]:
+    if not os.path.isdir(ASSETS_DIR):
+        return None
+    fpath = os.path.join(ASSETS_DIR, _safe_filename(animal_name))
+    if os.path.exists(fpath):
+        try:
+            return Image.open(fpath).convert("RGB")
+        except Exception:
+            return None
+    return None
+
+
+def get_animal_image(animal_name: str, size: tuple[int, int] = (320, 240)) -> Image.Image:
+    """
+    Returns a PIL.Image for the given animal name.
+    Order of attempts:
+    - If a local asset exists in assets/, load and resize it.
+    - If cached, load from disk.
+    - Try Wikipedia summary thumbnail (unless QUIZ_USE_LOCAL_ONLY is set).
+    - Fallback to generated placeholder.
+
+    Result is cached to disk as PNG (resized).
+    """
+    fname = _safe_filename(animal_name)
+    cache_path = os.path.join(CACHE_DIR, fname)
+
+    # Prefer local asset if present
+    img = _load_local_asset(animal_name)
+    if img is not None:
+        img = _fit_image(img, size)
+        try:
+            img.save(cache_path, format="PNG")
+        except Exception:
+            pass
+        return img
+
+    # Load from cache
+    if os.path.exists(cache_path):
+        try:
+            img = Image.open(cache_path).convert("RGB")
+            return img
+        except Exception:
+            pass
+
+    # Try fetch (unless local-only)
+    img = _fetch_wikipedia_thumbnail(animal_name)
+    if img is None:
+        img = _generate_placeholder(animal_name, size)
+
+    # Resize to consistent size while keeping aspect ratio and padding
+    img = _fit_image(img, size)
+
+    # Save to cache
+    try:
+        img.save(cache_path, format="PNG")
+    except Exception:
+        pass
+    return img
