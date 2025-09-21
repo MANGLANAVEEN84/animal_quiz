@@ -22,7 +22,8 @@ import re
 import time
 
 
-st.title("Animal Quiz App")
+
+st.title("ABC Quiz")
 
 
 # Require user name and email before starting quiz
@@ -48,55 +49,101 @@ if 'user_image' not in st.session_state:
     st.session_state.user_image = None
 
 if not st.session_state.quiz_started:
-    st.header("Enter your name and email to start the quiz")
-    user_name = st.text_input("User Name", value=st.session_state.user_name, key="user_name_input")
-    user_email = st.text_input("Email", value=st.session_state.user_email, key="user_email_input")
-    user_image = st.file_uploader("Upload your image (optional)", type=["png", "jpg", "jpeg"], key="user_image_input")
-    if user_image is not None:
-        st.session_state.user_image = user_image.getvalue()
-    if not st.session_state.email_verified:
-        smtp_server = "smtp.gmail.com"
-        smtp_port = 465
-        sender_email = "quizmasterzenz@gmail.com"
-        sender_password = st.text_input("Sender App Password", value="", type="password", key="sender_password")
-        if st.button("Send Verification Code"):
-            if user_name.strip() == '' or user_email.strip() == '' or sender_password.strip() == '':
-                st.warning("All fields are mandatory.")
-            elif not is_valid_email(user_email):
-                st.warning("Please enter a valid email address.")
+    # User credential and email verification temporarily disabled
+    st.session_state.quiz_started = True
+
+def get_letter_image(letter, size=(200, 200)):
+    fname = f"{letter.upper()}.png"
+    fpath = os.path.join(os.path.dirname(__file__), "letterimage", fname)
+    if os.path.exists(fpath):
+        img = Image.open(fpath).convert("RGB")
+        img = img.resize(size)
+        return img
+    else:
+        return Image.new("RGB", size, (220, 220, 220))
+
+# Fruit names for A-Z
+FRUITS = [
+    "Apple", "Banana", "Cherry", "Date", "Elderberry", "Fig", "Grape", "Honeydew", "Indian Fig", "Jackfruit", "Kiwi", "Lemon", "Mango", "Nectarine", "Orange", "Papaya", "Quince", "Raspberry", "Strawberry", "Tomato", "Ugli Fruit", "Vanilla", "Watermelon", "Xigua", "Yellow Passion Fruit", "Zucchini"
+]
+def get_fruit_name(letter):
+    idx = ord(letter.upper()) - ord('A')
+    if 0 <= idx < len(FRUITS):
+        return FRUITS[idx]
+    return ""
+
+# Show animal list and ABC quiz
+tab1, tab2, tab3 = st.tabs(["Quiz", "Animals", "ABC Sequence Quiz"])
+
+
+with tab3:
+
+    st.header("ABC Sequence / Missing Letter Quiz")
+    import random
+    letters = [chr(ord('A') + i) for i in range(26)]
+    max_questions = 5
+    if 'abc_quiz_questions' not in st.session_state or len(st.session_state.abc_quiz_questions) != max_questions:
+        def generate_abc_question():
+            quiz_type = random.choice(["next", "missing"])
+            idx = random.randint(0, 23)
+            if quiz_type == "next":
+                seq = letters[idx:idx+2]
+                answer_letter = letters[idx+2]
+                display_seq = seq + ["?"]
+                prompt = f"What comes after {seq[1]}?"
             else:
-                code = generate_code()
-                st.session_state.verification_code = code
-                st.session_state.user_name = user_name
-                st.session_state.user_email = user_email
-                st.session_state.code_sent_time = time.time()
-                try:
-                    send_verification_email(user_email, code, smtp_server, smtp_port, sender_email, sender_password)
-                    st.success(f"Verification code sent to {user_email}. Please check your email.")
-                except Exception as e:
-                    st.error(f"Failed to send email: {e}")
-        if st.session_state.verification_code:
-            code_input = st.text_input("Enter the code sent to your email:", key="code_input")
-            if st.button("Verify Code"):
-                now = time.time()
-                if now - st.session_state.code_sent_time > 60:
-                    st.warning("Code expired. Please request a new code.")
-                    st.session_state.verification_code = ''
-                elif code_input == st.session_state.verification_code:
-                    st.session_state.email_verified = True
-                    st.success("Email verified! You can now start the quiz.")
-                else:
-                    st.error("Invalid code. Please try again.")
-        st.stop()
-    if st.button("Start Quiz"):
-        st.session_state.quiz_started = True
-        st.rerun()
+                seq = [letters[idx], letters[idx+2]]
+                answer_letter = letters[idx+1]
+                display_seq = [seq[0], "?", seq[1]]
+                prompt = f"What letter is missing between {seq[0]} and {seq[1]}?"
+            return {
+                'display_seq': display_seq,
+                'answer_letter': answer_letter,
+                'prompt': prompt,
+                'user_input': '',
+                'correct': None
+            }
+        st.session_state.abc_quiz_questions = [generate_abc_question() for _ in range(max_questions)]
+        st.session_state.abc_quiz_submitted = False
+    questions = st.session_state.abc_quiz_questions
+    submitted = st.session_state.abc_quiz_submitted
 
-# Show animal list
-tab1, tab2 = st.tabs(["Quiz", "Animals"])
-
-
-
+    if not submitted:
+        with st.form("abc_quiz_form"):
+            for idx, current_q in enumerate(questions):
+                st.write(f"### Question {idx+1} of {max_questions}")
+                st.write("### ", "  ".join(current_q['display_seq']))
+                st.markdown(f"<div style='font-size:36px; font-weight:bold; margin-top:10px; margin-bottom:10px;'>{current_q['prompt']}</div>", unsafe_allow_html=True)
+                cols = st.columns(3)
+                for i, ltr in enumerate(current_q['display_seq']):
+                    if ltr != "?":
+                        fruit_name = get_fruit_name(ltr)
+                        cols[i].image(get_letter_image(ltr), caption=f"{ltr} - {fruit_name}", use_container_width=True)
+                    else:
+                        cols[i].markdown("<h2 style='text-align:center;'>?</h2>", unsafe_allow_html=True)
+                user_input = st.text_input("Your Answer", max_chars=1, key=f"abc_seq_input_{idx}").upper()
+                questions[idx]['user_input'] = user_input
+            submitted_form = st.form_submit_button("Submit Quiz")
+            if submitted_form:
+                for q in questions:
+                    q['correct'] = (q['user_input'] == q['answer_letter'])
+                st.session_state.abc_quiz_questions = questions
+                st.session_state.abc_quiz_submitted = True
+    if submitted:
+        st.header("Quiz Results")
+        correct_count = sum(1 for q in questions if q.get('correct'))
+        st.markdown(f"<h2 style='color:green;'>You got {correct_count} out of {max_questions} correct!</h2>", unsafe_allow_html=True)
+        for i, q in enumerate(questions):
+            fruit_name = get_fruit_name(q['answer_letter'])
+            st.write(f"Q{i+1}: {' '.join(q['display_seq'])}")
+            st.write(f"Your answer: {q['user_input']} | Correct answer: {q['answer_letter']} - {fruit_name}")
+            if q.get('correct'):
+                st.success("Correct!")
+            else:
+                st.error("Wrong!")
+        if st.button("Restart Quiz", key="abc_seq_restart"):
+            st.session_state.abc_quiz_questions = []
+            st.session_state.abc_quiz_submitted = False
 
 with tab1:
     st.header("Take the Quiz!")
