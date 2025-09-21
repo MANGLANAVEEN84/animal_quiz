@@ -3,7 +3,19 @@ import streamlit as st
 
 from animals import get_animal_list
 from quiz import generate_quiz
-from image_fetcher import get_animal_image
+import os
+from PIL import Image
+
+def get_preloaded_image(animal_name, size=(320, 240)):
+    fname = animal_name.strip().lower().replace(" ", "_") + ".png"
+    fpath = os.path.join(os.path.dirname(__file__), "preloaded_images", fname)
+    if os.path.exists(fpath):
+        img = Image.open(fpath).convert("RGB")
+        img = img.resize(size)
+        return img
+    else:
+        # fallback: blank image
+        return Image.new("RGB", size, (200, 200, 200))
 from PIL import Image
 from email_utils import generate_code, send_verification_email
 import re
@@ -30,10 +42,18 @@ if 'code_sent_time' not in st.session_state:
 def is_valid_email(email):
     return re.match(r"[^@]+@[^@]+\.[^@]+", email)
 
+
+# Optional user image upload
+if 'user_image' not in st.session_state:
+    st.session_state.user_image = None
+
 if not st.session_state.quiz_started:
     st.header("Enter your name and email to start the quiz")
     user_name = st.text_input("User Name", value=st.session_state.user_name, key="user_name_input")
     user_email = st.text_input("Email", value=st.session_state.user_email, key="user_email_input")
+    user_image = st.file_uploader("Upload your image (optional)", type=["png", "jpg", "jpeg"], key="user_image_input")
+    if user_image is not None:
+        st.session_state.user_image = user_image.getvalue()
     if not st.session_state.email_verified:
         smtp_server = "smtp.gmail.com"
         smtp_port = 465
@@ -99,7 +119,7 @@ with tab1:
         cols = st.columns(len(options))
         selected = answers[i]
         for j, opt in enumerate(options):
-            img = get_animal_image(opt)
+            img = get_preloaded_image(opt)
             btn_key = f"imgbtn_{i}_{j}"
             # Overlay tick if selected
             show_tick = (selected == opt)
@@ -125,9 +145,41 @@ with tab1:
             st.session_state.submitted = True
             submitted = True
 
+
     if submitted:
         score = sum([(a == quiz[i][2]) for i, a in enumerate(answers) if a is not None])
         st.markdown(f"<h2 style='color:green; font-weight:bold;'>You got {score} out of {len(quiz)} correct!</h2>", unsafe_allow_html=True)
+        # Show winner image and flashing message if score > 3 and user uploaded image
+        if score > 3 and st.session_state.get('user_image'):
+            import base64
+            st.markdown("<h3 style='color:gold;'>You are the winner!</h3>", unsafe_allow_html=True)
+            b64_img = base64.b64encode(st.session_state['user_image']).decode()
+            st.markdown("""
+                <style>
+                @keyframes borderflash {
+                    0% { border-color: magenta; }
+                    100% { border-color: gold; }
+                }
+                .winner-img {
+                    border: 6px solid magenta;
+                    animation: borderflash 1s infinite alternate;
+                    display: inline-block;
+                    margin: 10px;
+                    border-radius: 10px;
+                }
+                @keyframes flash {
+                    0% { color: magenta; }
+                    100% { color: gold; }
+                }
+                .winner-msg {
+                    animation: flash 1s infinite alternate;
+                    font-size: 2em;
+                    font-weight: bold;
+                }
+                </style>
+            """, unsafe_allow_html=True)
+            st.markdown(f"<div class='winner-img'><img src='data:image/png;base64,{b64_img}' width='200'></div>", unsafe_allow_html=True)
+            st.markdown("<div class='winner-msg'>You are the winner!</div>", unsafe_allow_html=True)
         if st.button("More Questions?"):
             st.session_state.reset_quiz = True
             st.session_state.submitted = False
