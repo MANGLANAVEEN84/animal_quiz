@@ -118,7 +118,7 @@ with tab3:
                 for i, ltr in enumerate(current_q['display_seq']):
                     if ltr != "?":
                         fruit_name = get_fruit_name(ltr)
-                        cols[i].image(get_letter_image(ltr), caption=f"{ltr} - {fruit_name}", use_container_width=True)
+                        cols[i].image(get_letter_image(ltr), caption=f"{ltr} - {fruit_name}", width='stretch')
                     else:
                         cols[i].markdown("<h2 style='text-align:center;'>?</h2>", unsafe_allow_html=True)
                 user_input = st.text_input("Your Answer", max_chars=1, key=f"abc_seq_input_{idx}").upper()
