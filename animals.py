@@ -48,6 +48,10 @@ def get_random_question() -> Tuple[str, List[str]]:
     return correct, options
 
 
+def get_animal_list() -> list[str]:
+    """Return the list of animal names."""
+    return ANIMALS
+
 def normalize_name(name: str) -> str:
     """Normalize animal name for filenames/keys."""
     return name.strip().lower().replace(" ", "_")
